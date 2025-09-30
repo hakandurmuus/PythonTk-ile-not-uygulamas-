@@ -1,4 +1,3 @@
-from tkinter.tix import INTEGER
 import ttkbootstrap as tb
 from tkinter import *
 import sqlite3
