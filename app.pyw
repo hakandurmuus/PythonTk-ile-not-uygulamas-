@@ -1,4 +1,3 @@
-from turtle import right
 import ttkbootstrap as tb
 from tkinter import *
 import sqlite3
@@ -212,4 +211,6 @@ class App:
         self.connection.close()
                 
 
+
 app = App()
+
