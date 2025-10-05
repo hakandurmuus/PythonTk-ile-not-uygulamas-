@@ -1,3 +1,4 @@
+from turtle import right
 import ttkbootstrap as tb
 from tkinter import *
 import sqlite3
@@ -33,14 +34,19 @@ class App:
         table_scroll_right.config(command=self.tvw.yview)
         table_scroll_bottom.config(command=self.tvw.xview)
 
-        self.tvw["columns"] =("id","baslik","not")
-        self.tvw["displaycolumns"] = ("baslik","not")
+        self.tvw["columns"] =("id","durum","baslik","not")
+        self.tvw["displaycolumns"] = ("durum","baslik","not")
 
+        self.tvw.column("durum",width=30,stretch=False)
         self.tvw.column("baslik",width=250,stretch=False)
         self.tvw.column("not",width=1685,stretch=False)
 
+        self.tvw.heading("durum",text="",anchor="w")
         self.tvw.heading("baslik",text="Başlık",anchor="w")
         self.tvw.heading("not",text="Not",anchor="w")
+
+        self.tvw.tag_configure("yapildi",background="lightgreen")
+        self.tvw.tag_configure("yapilmadi",background="white")
 
         if not os.path.exists("notes.db"):
             self.db_create()
@@ -67,6 +73,10 @@ class App:
         self.del_button.pack(anchor="w",side="left",padx=10,pady=5)
         self.edit_button = tb.Button(self.last_frame,text="Güncelle",bootstyle="success",command=self.edit_note)
         self.edit_button.pack(anchor="w",side="left",padx=10,pady=5)
+        self.clear_button = tb.Button(self.last_frame,text="Temizle",bootstyle="success",command=self.clear_entry)
+        self.clear_button.pack(anchor="w",side="left",padx=10,pady=5)
+        self.done_button = tb.Button(self.last_frame,text="Durum",bootstyle="success",command=self.done_note)
+        self.done_button.pack(anchor="w",side="right",padx=10,pady=5)
 
         self.main_window.mainloop()
 
@@ -75,18 +85,18 @@ class App:
         item = self.tvw.item(self.selected_item)["values"]
         self.baslik_entry.delete(0,END)
         self.not_entry.delete(0,END)
-        self.baslik_entry.insert(0,item[1])
-        self.not_entry.insert(0,item[2])
+        self.baslik_entry.insert(0,item[2])
+        self.not_entry.insert(0,item[3])
 
     def add_note(self):
+        durum = ''
         baslik = self.baslik_entry.get()
         note = self.not_entry.get()
 
         note_id = self.add_db(baslik,note)
-        self.tvw.insert("",END, values=(note_id,baslik,note))
+        self.tvw.insert("",END, values=(note_id,durum,baslik,note),tags="yapilmadi")
 
-        self.baslik_entry.delete(0,END)
-        self.not_entry.delete(0,END)   
+        self.clear_entry()   
 
     def del_note(self):
         self.selected_item = self.tvw.focus()
@@ -96,8 +106,7 @@ class App:
         self.del_db(note_id)
         self.tvw.delete(self.selected_item)
 
-        self.baslik_entry.delete(0,END)
-        self.not_entry.delete(0,END)
+        self.clear_entry()
     
     def edit_note(self):
         self.selected_item = self.tvw.focus()
@@ -105,12 +114,35 @@ class App:
         note = self.not_entry.get()
         values = self.tvw.item(self.selected_item, "values")
         note_id = int(values[0])
+        durum_icon = values[1]
 
         self.edit_db(note_id,baslik,note)
-        self.tvw.item(self.selected_item,text="",values=(note_id,baslik,note))
+        self.tvw.item(self.selected_item,text="",values=(note_id,durum_icon,baslik,note))
 
+        self.clear_entry()
+
+    def done_note(self):
+        self.selected_item = self.tvw.focus()
+        baslik = self.baslik_entry.get()
+        note = self.not_entry.get()
+        values = self.tvw.item(self.selected_item,"values")
+        note_id = int(values[0])
+        durum_icon = values[1]
+
+        self.done_db(note_id)
+        if durum_icon == '':
+            durum_icon = '✔'
+            self.tvw.item(self.selected_item,text="",values=(note_id,durum_icon,baslik,note),tags="yapildi")
+            self.clear_entry()
+        else:
+            durum_icon = ''
+            self.tvw.item(self.selected_item,text="",values=(note_id,durum_icon,baslik,note),tags="yapilmadi")
+            self.clear_entry()
+
+    def clear_entry(self):
         self.baslik_entry.delete(0,END)
         self.not_entry.delete(0,END)
+        
         
     def db_connect(self):
         self.connection = sqlite3.connect("notes.db")
@@ -120,6 +152,7 @@ class App:
         self.db_connect()
         self.cursor.execute("""CREATE TABLE notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        durum INTEGER DEFAULT 0,
         title TEXT,
         note TEXT
         )""")
@@ -130,7 +163,12 @@ class App:
         self.cursor.execute(sql)
         results = self.cursor.fetchall()
         for i in results:
-            self.tvw.insert("",END,values=(i))
+            if i[3] == 1:
+                durum_icon = '✔'
+                self.tvw.insert("",END,values=(i[0],durum_icon,i[1],i[2]),tags="yapildi")
+            else:
+                durum_icon = ''
+                self.tvw.insert("",END,values=(i[0],durum_icon,i[1],i[2]),tags="yapilmadi")
         self.connection.close()
     
     def add_db(self,baslik,note):
@@ -158,9 +196,20 @@ class App:
         self.cursor.execute(sql,values)
         self.connection.commit()
         self.connection.close()
+
+    def done_db(self,id):
+        self.db_connect()
+        self.cursor.execute("SELECT durum FROM notes WHERE id=?",(id,))
+        mevcut_durum = self.cursor.fetchone()[0]
+        if mevcut_durum == 1:
+            yeni_durum = 0
+        else:
+            yeni_durum = 1
+        sql = "UPDATE notes SET durum=? WHERE id=?"
+        values = (yeni_durum,id)
+        self.cursor.execute(sql,values)
+        self.connection.commit()
+        self.connection.close()
                 
-
-
-
 
 app = App()
